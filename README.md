@@ -1,6 +1,6 @@
 # VillagerPlants
 
-Purpur plugin for MC **26.1.2** — craft personal farmer villagers with upgradeable workstations.
+Purpur plugin for MC **26.2** — craft personal farmer villagers with upgradeable workstations.
 
 ## Gameplay
 
@@ -17,8 +17,8 @@ Purpur plugin for MC **26.1.2** — craft personal farmer villagers with upgrade
 
 ## Tech
 
-- Purpur API `26.1.2.build.2591-stable`, Kotlin + **kotlinx-coroutines** (custom Bukkit main-thread dispatcher, one coroutine per workstation), Bukkit YAML for `config.yml` + `data.yml` persistence (autosave every 5 min).
-- Build: `./gradlew build` (needs JDK 25; the `copyJar` task drops the jar into `purpur26-1-2/plugins/`).
+- Purpur API `26.2.build.2620-stable`, Kotlin + **kotlinx-coroutines** (custom Bukkit main-thread dispatcher, one coroutine per workstation), Bukkit YAML for `config.yml` + `data.yml` persistence (autosave every 5 min).
+- Build: `./gradlew build` (needs JDK 25; the `copyJar` task drops the jar into `purpur26-2/plugins/`).
 
 ## Config (`config.yml`)
 
