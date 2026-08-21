@@ -1,6 +1,6 @@
 name: VillagerPlants
 version: "${version}"
 main: de.cancelcloud.villagerplants.VillagerPlantsPlugin
-api-version: "26.1"
+api-version: "26.2"
 description: Craft personal farmer villagers with upgradeable workstations.
 author: cancel-cloud

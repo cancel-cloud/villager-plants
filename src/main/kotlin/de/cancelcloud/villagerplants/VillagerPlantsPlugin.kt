@@ -7,12 +7,18 @@ import de.cancelcloud.villagerplants.listener.EggPlaceListener
 import de.cancelcloud.villagerplants.listener.VillagerListener
 import de.cancelcloud.villagerplants.listener.WorkstationBlockListener
 import de.cancelcloud.villagerplants.manager.WorkstationManager
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Delay
+import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.bukkit.Bukkit
 import org.bukkit.NamespacedKey
 import org.bukkit.plugin.java.JavaPlugin
@@ -43,6 +49,12 @@ class VillagerPlantsPlugin : JavaPlugin() {
     var netheriteSpeedMultiplier: Double = 2.0
         private set
     var searchYRange: Int = 3
+        private set
+    var particleIntervalTicks: Long = 10
+        private set
+    var particleViewDistanceBlocks: Double = 48.0
+        private set
+    var maxWanderDistanceBlocks: Double = 10.0
         private set
 
     override fun onEnable() {
@@ -84,6 +96,9 @@ class VillagerPlantsPlugin : JavaPlugin() {
         workIntervalTicks = config.getLong("work-interval-ticks", 60)
         netheriteSpeedMultiplier = config.getDouble("netherite-speed-multiplier", 2.0)
         searchYRange = config.getInt("search-y-range", 3)
+        particleIntervalTicks = config.getLong("particle-interval-ticks", 10)
+        particleViewDistanceBlocks = config.getDouble("particle-view-distance-blocks", 48.0)
+        maxWanderDistanceBlocks = config.getDouble("max-wander-distance-blocks", 10.0)
     }
 }
 
@@ -102,7 +117,8 @@ class Keys(plugin: VillagerPlantsPlugin) {
 }
 
 /** Coroutine dispatcher that runs continuations on the Bukkit main thread. */
-class BukkitMainDispatcher(private val plugin: JavaPlugin) : CoroutineDispatcher() {
+@OptIn(ExperimentalCoroutinesApi::class, InternalCoroutinesApi::class)
+class BukkitMainDispatcher(private val plugin: JavaPlugin) : CoroutineDispatcher(), Delay {
     override fun isDispatchNeeded(context: CoroutineContext): Boolean =
         !Bukkit.isPrimaryThread()
 
@@ -110,6 +126,20 @@ class BukkitMainDispatcher(private val plugin: JavaPlugin) : CoroutineDispatcher
         if (plugin.isEnabled) {
             Bukkit.getScheduler().runTask(plugin, block)
         }
+    }
+
+    override fun scheduleResumeAfterDelay(timeMillis: Long, continuation: CancellableContinuation<Unit>) {
+        val ticks = ((timeMillis + 49) / 50).coerceAtLeast(1)
+        Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            if (!plugin.isEnabled || !continuation.isActive) return@Runnable
+            continuation.tryResume(Unit)?.let { continuation.completeResume(it) }
+        }, ticks)
+    }
+
+    override fun invokeOnTimeout(timeMillis: Long, block: Runnable, context: CoroutineContext): DisposableHandle {
+        val ticks = ((timeMillis + 49) / 50).coerceAtLeast(1)
+        val task = Bukkit.getScheduler().runTaskLater(plugin, block, ticks)
+        return DisposableHandle { task.cancel() }
     }
 }
 

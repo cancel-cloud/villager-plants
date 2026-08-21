@@ -100,6 +100,7 @@ object VillagerSpawner {
         villager.setBaby()
         villager.isPersistent = true
         villager.removeWhenFarAway = false
+        villager.setCanPickupItems(false)
         villager.persistentDataContainer.set(
             plugin.keys.owner, PersistentDataType.STRING, ws.owner.toString()
         )
@@ -110,6 +111,6 @@ object VillagerSpawner {
         villager.isCustomNameVisible = true
         ws.tool?.let { villager.equipment?.setItemInMainHand(it.clone()) }
         villager.equipment?.itemInMainHandDropChance = 0f
-        ws.villagerId = villager.uniqueId
+        plugin.workstations.setVillager(ws, villager.uniqueId)
     }
 }

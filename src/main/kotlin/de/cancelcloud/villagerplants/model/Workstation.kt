@@ -24,27 +24,24 @@ object Tiers {
     const val MIN = 1
     const val MAX = 4
 
+    private class Entry(val area: Int, val cost: Pair<Material, Int>?, val name: String)
+
+    private val entries = listOf(
+        Entry(4, null, "Basic"),
+        Entry(8, Material.IRON_BLOCK to 2, "Iron"),
+        Entry(16, Material.GOLD_BLOCK to 2, "Gold"),
+        Entry(16, Material.NETHERITE_BLOCK to 1, "Netherite"),
+    )
+
     /** Maximum working-area edge length for a tier. */
-    fun maxArea(tier: Int): Int = when (tier) {
-        1 -> 4
-        2 -> 8
-        else -> 16
-    }
+    fun maxArea(tier: Int): Int = entry(tier).area
 
     /** Upgrade cost to reach [tier] (from tier - 1). */
-    fun cost(tier: Int): Pair<Material, Int>? = when (tier) {
-        2 -> Material.IRON_BLOCK to 2
-        3 -> Material.GOLD_BLOCK to 2
-        4 -> Material.NETHERITE_BLOCK to 1
-        else -> null
-    }
+    fun cost(tier: Int): Pair<Material, Int>? = entry(tier).cost
 
-    fun name(tier: Int): String = when (tier) {
-        1 -> "Basic"
-        2 -> "Iron"
-        3 -> "Gold"
-        else -> "Netherite"
-    }
+    fun name(tier: Int): String = entry(tier).name
+
+    private fun entry(tier: Int): Entry = entries[(tier - MIN).coerceIn(entries.indices)]
 }
 
 /**
@@ -60,7 +57,7 @@ class Workstation(
     var areaSize: Int = 4,
     var crop: Crop? = null,
     /** Seed items deposited by the owner, consumed by the villager when planting. */
-    var input: Long = 0,
+    var seedCount: Long = 0,
     /** Harvested drops, effectively infinite capacity. */
     val storage: MutableMap<Material, Long> = linkedMapOf(),
     var villagerId: UUID? = null,
@@ -71,12 +68,12 @@ class Workstation(
 
     fun maxArea(): Int = Tiers.maxArea(tier)
 
-    fun addDrop(material: Material, amount: Long) {
+    fun store(material: Material, amount: Long) {
         if (amount <= 0) return
         storage.merge(material, amount) { a, b -> a + b }
     }
 
-    fun takeDrop(material: Material, amount: Long): Long {
+    fun withdraw(material: Material, amount: Long): Long {
         val have = storage[material] ?: return 0
         val taken = minOf(have, amount)
         if (have - taken <= 0) storage.remove(material) else storage[material] = have - taken

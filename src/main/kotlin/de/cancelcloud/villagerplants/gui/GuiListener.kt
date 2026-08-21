@@ -4,6 +4,7 @@ import de.cancelcloud.villagerplants.VillagerPlantsPlugin
 import de.cancelcloud.villagerplants.item.Items
 import de.cancelcloud.villagerplants.model.Crop
 import de.cancelcloud.villagerplants.model.Tiers
+import de.cancelcloud.villagerplants.util.giveOrDrop
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
@@ -27,33 +28,37 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         when (holder.type) {
             GuiType.WORKER -> handleWorkerClick(event)
             GuiType.MAIN -> {
+                if (event.rawSlot >= event.inventory.size) {
+                    // Bottom inventory: allow normal interaction, block shift-clicking into the GUI.
+                    if (event.isShiftClick) event.isCancelled = true
+                    return
+                }
                 event.isCancelled = true
-                if (event.rawSlot >= event.inventory.size) return
                 when (event.rawSlot) {
-                    10 -> if (event.isShiftClick) refundSeeds(player, holder)
-                    11 -> handleToolClick(event, player, holder)
-                    12 -> Guis.openUpgrade(plugin, player, ws)
-                    13 -> Guis.openArea(plugin, player, ws)
-                    14 -> Guis.openHarvest(plugin, player, ws)
-                    16 -> pickup(player, holder)
+                    Guis.MAIN_CROP_SLOT -> if (event.isShiftClick) refundSeeds(player, holder)
+                    Guis.MAIN_TOOL_SLOT -> handleToolClick(event, player, holder)
+                    Guis.MAIN_UPGRADE_SLOT -> Guis.openUpgrade(plugin, player, ws)
+                    Guis.MAIN_AREA_SLOT -> Guis.openArea(plugin, player, ws)
+                    Guis.MAIN_HARVEST_SLOT -> Guis.openHarvest(plugin, player, ws)
+                    Guis.MAIN_PICKUP_SLOT -> pickup(player, holder)
                 }
             }
             GuiType.UPGRADE -> {
                 event.isCancelled = true
                 if (event.rawSlot >= event.inventory.size) return
                 when (event.rawSlot) {
-                    13 -> upgrade(player, holder)
-                    22 -> Guis.openMain(plugin, player, ws)
+                    Guis.UPGRADE_CONFIRM_SLOT -> upgrade(player, holder)
+                    Guis.BACK_SLOT -> Guis.openMain(plugin, player, ws)
                 }
             }
             GuiType.AREA -> {
                 event.isCancelled = true
                 if (event.rawSlot >= event.inventory.size) return
                 when (event.rawSlot) {
-                    11 -> selectArea(player, holder, 4)
-                    13 -> selectArea(player, holder, 8)
-                    15 -> selectArea(player, holder, 16)
-                    22 -> Guis.openMain(plugin, player, ws)
+                    Guis.AREA_SMALL_SLOT -> selectArea(player, holder, 4)
+                    Guis.AREA_MEDIUM_SLOT -> selectArea(player, holder, 8)
+                    Guis.AREA_LARGE_SLOT -> selectArea(player, holder, 16)
+                    Guis.BACK_SLOT -> Guis.openMain(plugin, player, ws)
                 }
             }
             GuiType.HARVEST -> handleHarvestClick(event, player, holder)
@@ -91,7 +96,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
             // Click inside the GUI: only input slots are interactive.
             if (event.rawSlot !in Guis.WORKER_INPUT_SLOTS) {
                 event.isCancelled = true
-                if (event.rawSlot == 4 && event.isShiftClick) {
+                if (event.rawSlot == Guis.WORKER_INFO_SLOT && event.isShiftClick) {
                     val holder = event.inventory.holder as? VPHolder ?: return
                     val player = event.whoClicked as? Player ?: return
                     refundSeeds(player, holder)
@@ -115,7 +120,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
 
     private fun absorbWorkerItems(player: Player, holder: VPHolder) {
         val ws = holder.ws
-        val inv = holder.inv
+        val inv = holder.inventory
         val rejected = mutableListOf<ItemStack>()
 
         for (slot in Guis.WORKER_INPUT_SLOTS) {
@@ -128,20 +133,18 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
                 rejected += item
                 continue
             }
-            if (ws.crop == null || ws.input <= 0) {
+            if (ws.crop == null || ws.seedCount <= 0) {
                 ws.crop = crop
             }
             if (crop == ws.crop) {
-                ws.input += item.amount
+                ws.seedCount += item.amount
             } else {
                 rejected += item
             }
         }
 
         for (item in rejected) {
-            player.inventory.addItem(item).values.forEach {
-                player.world.dropItemNaturally(player.location, it)
-            }
+            player.giveOrDrop(item)
         }
         if (rejected.isNotEmpty()) {
             player.sendMessage(
@@ -157,22 +160,19 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
     private fun refundSeeds(player: Player, holder: VPHolder) {
         val ws = holder.ws
         val crop = ws.crop
-        if (crop == null || ws.input <= 0) {
+        if (crop == null || ws.seedCount <= 0) {
             ws.crop = null
             refreshCropInfo(holder)
             return
         }
-        val total = ws.input
-        var remaining = ws.input
-        ws.input = 0
+        val total = ws.seedCount
+        var remaining = ws.seedCount
+        ws.seedCount = 0
         ws.crop = null
         while (remaining > 0) {
             val amount = minOf(remaining, crop.seed.maxStackSize.toLong())
             remaining -= amount
-            val stack = ItemStack(crop.seed, amount.toInt())
-            player.inventory.addItem(stack).values.forEach {
-                player.world.dropItemNaturally(player.location, it)
-            }
+            player.giveOrDrop(ItemStack(crop.seed, amount.toInt()))
         }
         player.sendMessage(
             Component.text(
@@ -184,7 +184,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
     }
 
     private fun refreshCropInfo(holder: VPHolder) {
-        val player = holder.inv.viewers.firstOrNull() as? Player ?: return
+        val player = holder.inventory.viewers.firstOrNull() as? Player ?: return
         when (holder.type) {
             GuiType.MAIN -> Guis.openMain(plugin, player, holder.ws)
             GuiType.WORKER -> Guis.openWorker(plugin, player, holder.ws)
@@ -202,7 +202,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
             ws.tool = null
             player.setItemOnCursor(tool)
             updateVillagerHand(ws)
-            holder.inv.setItem(11, Guis.toolButton(ws))
+            holder.inventory.setItem(Guis.MAIN_TOOL_SLOT, Guis.toolButton(ws))
             return
         }
 
@@ -222,7 +222,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         ws.tool = cursor.clone()
         player.setItemOnCursor(previous)
         updateVillagerHand(ws)
-        holder.inv.setItem(11, Guis.toolButton(ws))
+        holder.inventory.setItem(Guis.MAIN_TOOL_SLOT, Guis.toolButton(ws))
         player.sendMessage(
             Component.text("The villager now harvests with your tool.", NamedTextColor.GREEN)
         )
@@ -243,7 +243,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         ws.villagerId?.let { id ->
             Bukkit.getEntity(id)?.remove()
         }
-        ws.villagerId = null
+        plugin.workstations.setVillager(ws, null)
         loc.block.type = Material.AIR
         ws.location = null
         plugin.workstations.index(ws)
@@ -251,11 +251,9 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
 
         player.closeInventory()
         val item = Items.workstationItem(plugin, ws)
-        player.inventory.addItem(item).values.forEach {
-            player.world.dropItemNaturally(player.location, it)
-        }
+        player.giveOrDrop(item)
         player.sendMessage(Component.text("Workstation picked up.", NamedTextColor.GREEN))
-        plugin.workstations.save()
+        plugin.workstations.saveAsync()
     }
 
     private fun upgrade(player: Player, holder: VPHolder) {
@@ -303,18 +301,17 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         event.isCancelled = true
         if (event.rawSlot >= event.inventory.size) return
         val ws = holder.ws
-        val entries = Guis.harvestEntries(ws)
-        val paginated = entries.size > Guis.HARVEST_SIZE - 1
+        val pg = Guis.harvestPage(ws, holder.page)
 
-        if (paginated && event.rawSlot >= Guis.ITEMS_PER_PAGE) {
+        if (pg.paginated && event.rawSlot >= Guis.ITEMS_PER_PAGE) {
             when (event.rawSlot) {
-                45 -> Guis.openMain(plugin, player, ws)
-                48 -> Guis.openHarvest(plugin, player, ws, holder.page - 1)
-                50 -> Guis.openHarvest(plugin, player, ws, holder.page + 1)
+                Guis.HARVEST_BACK_SLOT -> Guis.openMain(plugin, player, ws)
+                Guis.HARVEST_PREV_SLOT -> Guis.openHarvest(plugin, player, ws, pg.page - 1)
+                Guis.HARVEST_NEXT_SLOT -> Guis.openHarvest(plugin, player, ws, pg.page + 1)
             }
             return
         }
-        if (!paginated && event.rawSlot == Guis.HARVEST_SIZE - 1) {
+        if (!pg.paginated && event.rawSlot == Guis.HARVEST_BACK_SINGLE_SLOT) {
             Guis.openMain(plugin, player, ws)
             return
         }
@@ -322,12 +319,25 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         val clicked = event.currentItem ?: return
         if (clicked.type.isAir || clicked.type == Material.GRAY_STAINED_GLASS_PANE) return
 
-        val taken = ws.takeDrop(clicked.type, clicked.type.maxStackSize.toLong())
+        val taken = ws.withdraw(clicked.type, clicked.type.maxStackSize.toLong())
         if (taken <= 0) return
-        val give = ItemStack(clicked.type, taken.toInt())
-        player.inventory.addItem(give).values.forEach {
-            player.world.dropItemNaturally(player.location, it)
+        player.giveOrDrop(ItemStack(clicked.type, taken.toInt()))
+
+        val remaining = ws.storage[clicked.type] ?: 0L
+        if (remaining > 0) {
+            clicked.editMeta { meta ->
+                meta.lore(
+                    listOf(
+                        Items.lore("Stored: $remaining"),
+                        Items.lore("Click to take a stack."),
+                    )
+                )
+            }
+            event.inventory.setItem(event.rawSlot, clicked)
+        } else if (pg.page == pg.totalPages - 1 && event.rawSlot == pg.items.lastIndex) {
+            Guis.openHarvest(plugin, player, ws, holder.page)
+        } else {
+            holder.inventory.setItem(event.rawSlot, null)
         }
-        Guis.openHarvest(plugin, player, ws, holder.page)
     }
 }

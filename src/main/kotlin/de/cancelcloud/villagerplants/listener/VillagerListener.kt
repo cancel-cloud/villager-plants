@@ -5,12 +5,15 @@ import de.cancelcloud.villagerplants.gui.Guis
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.entity.Villager
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.CreatureSpawnEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityTargetEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
@@ -23,9 +26,12 @@ class VillagerListener(private val plugin: VillagerPlantsPlugin) : Listener {
     @EventHandler
     fun onSpawn(event: CreatureSpawnEvent) {
         val villager = event.entity as? Villager ?: return
-        if (event.spawnReason != CreatureSpawnEvent.SpawnReason.NATURAL) {
-            villager.persistentDataContainer.set(plugin.keys.unnatural, PersistentDataType.BYTE, 1)
-        }
+        val natural = event.spawnReason == CreatureSpawnEvent.SpawnReason.NATURAL ||
+            event.spawnReason == CreatureSpawnEvent.SpawnReason.CHUNK_GEN
+        if (natural) return
+        val pdc = villager.persistentDataContainer
+        if (pdc.has(plugin.keys.unnatural, PersistentDataType.BYTE)) return
+        pdc.set(plugin.keys.unnatural, PersistentDataType.BYTE, 1)
     }
 
     /** Rare spawn-egg drop from naturally spawned villagers killed by a player. */
@@ -36,7 +42,7 @@ class VillagerListener(private val plugin: VillagerPlantsPlugin) : Listener {
 
         // Personal villager died: unlink it from its workstation.
         if (pdc.has(plugin.keys.owner, PersistentDataType.STRING)) {
-            plugin.workstations.byVillager(villager.uniqueId)?.villagerId = null
+            plugin.workstations.byVillager(villager.uniqueId)?.let { plugin.workstations.setVillager(it, null) }
             return
         }
 
@@ -68,4 +74,21 @@ class VillagerListener(private val plugin: VillagerPlantsPlugin) : Listener {
         }
         Guis.openWorker(plugin, player, ws)
     }
+
+    /** Personal workers take no damage. */
+    @EventHandler(ignoreCancelled = true)
+    fun onDamage(event: EntityDamageEvent) {
+        if (isWorker(event.entity)) event.isCancelled = true
+    }
+
+    /** Mobs must not target personal workers. */
+    @EventHandler(ignoreCancelled = true)
+    fun onTarget(event: EntityTargetEvent) {
+        val target = event.target ?: return
+        if (isWorker(target)) event.isCancelled = true
+    }
+
+    private fun isWorker(entity: Entity): Boolean =
+        entity.persistentDataContainer.has(plugin.keys.workstationId, PersistentDataType.STRING) &&
+            plugin.workstations.byVillager(entity.uniqueId) != null
 }

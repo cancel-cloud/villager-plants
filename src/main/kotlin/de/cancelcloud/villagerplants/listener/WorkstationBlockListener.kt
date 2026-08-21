@@ -4,13 +4,16 @@ import de.cancelcloud.villagerplants.VillagerPlantsPlugin
 import de.cancelcloud.villagerplants.gui.Guis
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.block.Block
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockBurnEvent
 import org.bukkit.event.block.BlockExplodeEvent
 import org.bukkit.event.block.BlockPistonExtendEvent
 import org.bukkit.event.block.BlockPistonRetractEvent
+import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityExplodeEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
@@ -49,12 +52,22 @@ class WorkstationBlockListener(private val plugin: VillagerPlantsPlugin) : Liste
 
     @EventHandler
     fun onEntityExplode(event: EntityExplodeEvent) {
-        event.blockList().removeIf { plugin.workstations.at(it) != null }
+        protectBlocks(event.blockList())
     }
 
     @EventHandler
     fun onBlockExplode(event: BlockExplodeEvent) {
-        event.blockList().removeIf { plugin.workstations.at(it) != null }
+        protectBlocks(event.blockList())
+    }
+
+    @EventHandler
+    fun onBurn(event: BlockBurnEvent) {
+        if (plugin.workstations.at(event.block) != null) event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onChangeBlock(event: EntityChangeBlockEvent) {
+        if (plugin.workstations.at(event.block) != null) event.isCancelled = true
     }
 
     @EventHandler
@@ -65,5 +78,9 @@ class WorkstationBlockListener(private val plugin: VillagerPlantsPlugin) : Liste
     @EventHandler
     fun onPistonRetract(event: BlockPistonRetractEvent) {
         if (event.blocks.any { plugin.workstations.at(it) != null }) event.isCancelled = true
+    }
+
+    private fun protectBlocks(blocks: MutableList<Block>) {
+        blocks.removeIf { plugin.workstations.at(it) != null }
     }
 }

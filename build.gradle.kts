@@ -1,12 +1,12 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
-    kotlin("jvm") version "2.4.0"
-    id("com.gradleup.shadow") version "9.0.0-rc2"
+    kotlin("jvm") version "2.4.10"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "de.cancelcloud"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -14,9 +14,9 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.purpurmc.purpur:purpur-api:26.1.2.build.2591-stable")
+    compileOnly("org.purpurmc.purpur:purpur-api:26.2.build.2620-stable")
     implementation(kotlin("stdlib"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 }
 
 kotlin {
@@ -34,6 +34,7 @@ tasks {
         archiveBaseName.set("VillagerPlants")
         archiveVersion.set(version.toString())
         archiveClassifier.set("")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
 }
 
@@ -41,7 +42,7 @@ tasks {
 tasks.register<Copy>("copyJar") {
     dependsOn(tasks.named<ShadowJar>("shadowJar"))
     from(tasks.named<ShadowJar>("shadowJar").get().archiveFile.get().asFile)
-    into(file("/Users/cancelcloud/Developer/Minecraft/purpur26-1-2/plugins/"))
+    into(file("/Users/cancelcloud/Developer/Minecraft/purpur26-2/plugins/"))
     rename { "VillagerPlants-${project.version}.jar" }
 }
 
