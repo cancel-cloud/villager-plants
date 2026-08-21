@@ -3,8 +3,10 @@ package de.cancelcloud.villagerplants.manager
 import de.cancelcloud.villagerplants.VillagerPlantsPlugin
 import de.cancelcloud.villagerplants.model.Crop
 import de.cancelcloud.villagerplants.model.Workstation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import de.cancelcloud.villagerplants.delayTicks
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -12,44 +14,71 @@ import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
 
     private val byId = linkedMapOf<UUID, Workstation>()
-    private val byBlock = hashMapOf<String, Workstation>()
+    private val byBlock = hashMapOf<UUID, HashMap<Long, Workstation>>()
+    private val blockIndex = hashMapOf<UUID, BlockIndexEntry>()
+    private val byVillager = hashMapOf<UUID, Workstation>()
     private val file = File(plugin.dataFolder, "data.yml")
+    private val tmpFile = File(plugin.dataFolder, "data.yml.tmp")
+
+    /** Packed block position a workstation is currently indexed under. */
+    private class BlockIndexEntry(val worldId: UUID, val packed: Long)
 
     fun all(): Collection<Workstation> = byId.values
 
     fun byId(id: UUID): Workstation? = byId[id]
 
-    fun byVillager(id: UUID): Workstation? = byId.values.firstOrNull { it.villagerId == id }
+    fun byVillager(id: UUID): Workstation? = byVillager[id]
 
-    fun at(block: Block): Workstation? = byBlock[key(block.location)]
+    fun at(block: Block): Workstation? =
+        byBlock[block.world.uid]?.get(pack(block.x, block.y, block.z))
 
     fun register(ws: Workstation) {
         byId[ws.id] = ws
         index(ws)
+        ws.villagerId?.let { byVillager[it] = ws }
     }
 
     fun remove(ws: Workstation) {
         byId.remove(ws.id)
-        ws.location?.let { byBlock.remove(key(it)) }
+        unindex(ws)
+        ws.villagerId?.let { old -> if (byVillager[old] === ws) byVillager.remove(old) }
+    }
+
+    /** Single mutation point for [Workstation.villagerId]; keeps the villager index in sync. */
+    fun setVillager(ws: Workstation, villagerId: UUID?) {
+        ws.villagerId?.let { old -> if (byVillager[old] === ws) byVillager.remove(old) }
+        ws.villagerId = villagerId
+        villagerId?.let { byVillager[it] = ws }
     }
 
     /** Re-index after a location change (place / pickup). */
     fun index(ws: Workstation) {
-        byBlock.entries.removeIf { it.value === ws }
-        ws.location?.let { byBlock[key(it)] = ws }
+        unindex(ws)
+        val loc = ws.location ?: return
+        val packed = pack(loc.blockX, loc.blockY, loc.blockZ)
+        byBlock.getOrPut(loc.world.uid) { hashMapOf() }[packed] = ws
+        blockIndex[ws.id] = BlockIndexEntry(loc.world.uid, packed)
     }
 
-    private fun key(loc: Location): String =
-        "${loc.world.uid}:${loc.blockX}:${loc.blockY}:${loc.blockZ}"
+    private fun unindex(ws: Workstation) {
+        val entry = blockIndex.remove(ws.id) ?: return
+        byBlock[entry.worldId]?.remove(entry.packed)
+    }
+
+    /** Packs (x, y, z) into a Long: 26 bits x | 12 bits y | 26 bits z, sign-safe via masking. */
+    private fun pack(x: Int, y: Int, z: Int): Long =
+        ((x.toLong() and 0x3FFFFFFL) shl 38) or ((z.toLong() and 0x3FFFFFFL) shl 12) or (y.toLong() and 0xFFFL)
 
     // ---------------------------------------------------------------- persistence
 
-    fun save() {
+    private fun snapshot(): YamlConfiguration {
         val yaml = YamlConfiguration()
         for (ws in byId.values) {
             val path = "workstations.${ws.id}"
@@ -57,7 +86,7 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
             yaml.set("$path.tier", ws.tier)
             yaml.set("$path.area", ws.areaSize)
             yaml.set("$path.crop", ws.crop?.name)
-            yaml.set("$path.input", ws.input)
+            yaml.set("$path.input", ws.seedCount)
             yaml.set("$path.villager", ws.villagerId?.toString())
             yaml.set("$path.tool", ws.tool)
             ws.location?.let { loc ->
@@ -70,13 +99,34 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
                 yaml.set("$path.storage.${mat.name}", count)
             }
         }
+        return yaml
+    }
+
+    fun save() {
         plugin.dataFolder.mkdirs()
-        yaml.save(file)
+        snapshot().save(file)
+    }
+
+    fun saveAsync() {
+        val data = snapshot().saveToString()
+        plugin.scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    plugin.dataFolder.mkdirs()
+                    Files.writeString(tmpFile.toPath(), data)
+                    Files.move(tmpFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                }
+            } catch (e: Exception) {
+                plugin.logger.warning("Autosave failed: ${e.message}")
+            }
+        }
     }
 
     fun load() {
         byId.clear()
         byBlock.clear()
+        blockIndex.clear()
+        byVillager.clear()
         if (!file.exists()) return
         val yaml = YamlConfiguration.loadConfiguration(file)
         val root = yaml.getConfigurationSection("workstations") ?: return
@@ -106,7 +156,7 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
                 tier = sec.getInt("tier", 1).coerceIn(1, 4),
                 areaSize = sec.getInt("area", 4),
                 crop = sec.getString("crop")?.let { runCatching { Crop.valueOf(it) }.getOrNull() },
-                input = sec.getLong("input", 0),
+                seedCount = sec.getLong("input", 0),
                 villagerId = sec.getString("villager")?.let { runCatching { UUID.fromString(it) }.getOrNull() },
                 tool = sec.getItemStack("tool"),
             )
@@ -124,9 +174,7 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
         plugin.scope.launch {
             while (isActive) {
                 delayTicks(20L * 60 * 5) // every 5 minutes
-                runCatching { save() }.onFailure {
-                    plugin.logger.warning("Autosave failed: ${it.message}")
-                }
+                saveAsync()
             }
         }
     }
