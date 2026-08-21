@@ -41,7 +41,7 @@ tasks {
 tasks.register<Copy>("copyJar") {
     dependsOn(tasks.named<ShadowJar>("shadowJar"))
     from(tasks.named<ShadowJar>("shadowJar").get().archiveFile.get().asFile)
-    into(file("/Users/cancelcloud/Developer/Minecraft/purpur26-1-2/plugins/"))
+    into(file("/Users/cancelcloud/Developer/Minecraft/purpur26-2/plugins/"))
     rename { "VillagerPlants-${project.version}.jar" }
 }
 
