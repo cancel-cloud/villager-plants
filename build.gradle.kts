@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "de.cancelcloud"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -14,7 +14,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.purpurmc.purpur:purpur-api:26.1.2.build.2591-stable")
+    compileOnly("org.purpurmc.purpur:purpur-api:26.2.build.2620-stable")
     implementation(kotlin("stdlib"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
