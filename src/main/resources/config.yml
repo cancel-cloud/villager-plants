@@ -1,0 +1,12 @@
+# Chance (0.0 - 1.0) that a naturally spawned villager killed by a player
+# drops a villager spawn egg.
+egg-drop-chance: 0.05
+
+# Ticks between each villager work action (plant or harvest one block).
+work-interval-ticks: 60
+
+# Netherite tier (tier 4) divides the work interval by this factor.
+netherite-speed-multiplier: 2.0
+
+# Vertical range (+/- blocks around the workstation Y level) scanned for farmland.
+search-y-range: 3
