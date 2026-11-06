@@ -230,8 +230,8 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
 
     private fun updateVillagerHand(ws: de.cancelcloud.villagerplants.model.Workstation) {
         val villager = ws.villagerId?.let { Bukkit.getEntity(it) } as? org.bukkit.entity.Villager ?: return
-        villager.equipment?.setItemInMainHand(ws.tool?.clone())
-        villager.equipment?.itemInMainHandDropChance = 0f // never drop the player's tool
+        villager.equipment.setItemInMainHand(ws.tool?.clone())
+        villager.equipment.itemInMainHandDropChance = 0f // never drop the player's tool
     }
 
     // ---------------------------------------------------------------- main actions
@@ -274,6 +274,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
         }
         player.inventory.removeItem(cost)
         ws.tier = next
+        plugin.workstations.save()
         player.sendMessage(
             Component.text("Workstation upgraded to ${Tiers.name(next)} tier!", NamedTextColor.GREEN)
         )
@@ -289,6 +290,7 @@ class GuiListener(private val plugin: VillagerPlantsPlugin) : Listener {
             return
         }
         ws.areaSize = size
+        plugin.workstations.save()
         player.sendMessage(
             Component.text("Working area set to ${size}x${size}.", NamedTextColor.GREEN)
         )

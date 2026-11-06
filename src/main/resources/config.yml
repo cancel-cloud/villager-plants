@@ -17,6 +17,6 @@ particle-interval-ticks: 10
 # Distance (blocks) a player must be within for workstation particles to spawn.
 particle-view-distance-blocks: 48.0
 
-# How far (blocks) the personal villager may wander from its workstation
-# before it is guided back. Always covers the working area.
-max-wander-distance-blocks: 10.0
+# Extra blocks past the corner of the working area before the villager
+# is guided back. The farm itself is always in range.
+max-wander-distance-blocks: 2.0

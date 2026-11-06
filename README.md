@@ -1,6 +1,6 @@
 # VillagerPlants
 
-Purpur plugin for MC **26.2** — craft personal farmer villagers with upgradeable workstations.
+Purpur plugin for MC **26.3** — craft personal farmer villagers with upgradeable workstations.
 
 ## Gameplay
 
@@ -17,8 +17,8 @@ Purpur plugin for MC **26.2** — craft personal farmer villagers with upgradeab
 
 ## Tech
 
-- Purpur API `26.2.build.2620-stable`, Kotlin 2.4.10 + **kotlinx-coroutines** 1.11.0 (custom Bukkit main-thread dispatcher, one coroutine per workstation; coroutine delays are tick-aligned via a custom `Delay` implementation on the dispatcher), Bukkit YAML for `config.yml` + `data.yml` persistence (autosave every 5 min).
-- Build: `./gradlew build` (needs JDK 25; the `copyJar` task drops the jar into `purpur26-2/plugins/`).
+- Purpur API `26.3.build.2656-stable`. Kotlin **2.4.20** and **kotlinx-coroutines** 1.11.0 come from **MCKotlin-Paper 1.5.1-k2.4.20** (`join-classpath`, required). The plugin jar does not bundle them. Custom Bukkit main-thread dispatcher, one coroutine per workstation; coroutine delays are tick-aligned via a custom `Delay` implementation on the dispatcher. Bukkit YAML for `config.yml` + `data.yml` persistence (autosave every 5 min).
+- Build: `./gradlew build` (needs JDK 25; the `copyJar` task drops the jar into `purpur26-3/plugins/`).
 
 ## Config (`config.yml`)
 
@@ -30,7 +30,7 @@ Purpur plugin for MC **26.2** — craft personal farmer villagers with upgradeab
 | `search-y-range` | `3` | Vertical scan range around the workstation |
 | `particle-interval-ticks` | `10` | Ticks between workstation ambient particle bursts |
 | `particle-view-distance-blocks` | `48.0` | Particles only spawn when a player is within this distance |
-| `max-wander-distance-blocks` | `10.0` | How far the villager may wander from its workstation before being guided back (always covers the working area) |
+| `max-wander-distance-blocks` | `2.0` | Extra blocks past the corner of the working area before the villager is guided back |
 
 
 ## Start Command for the server

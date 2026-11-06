@@ -17,6 +17,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
 
@@ -26,6 +27,8 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
     private val byVillager = hashMapOf<UUID, Workstation>()
     private val file = File(plugin.dataFolder, "data.yml")
     private val tmpFile = File(plugin.dataFolder, "data.yml.tmp")
+    private val saveGen = AtomicInteger()
+    private val saveLock = Any()
 
     /** Packed block position a workstation is currently indexed under. */
     private class BlockIndexEntry(val worldId: UUID, val packed: Long)
@@ -103,22 +106,35 @@ class WorkstationManager(private val plugin: VillagerPlantsPlugin) {
     }
 
     fun save() {
-        plugin.dataFolder.mkdirs()
-        snapshot().save(file)
+        val gen = saveGen.incrementAndGet()
+        write(snapshot().saveToString(), gen)
     }
 
     fun saveAsync() {
+        val gen = saveGen.incrementAndGet()
         val data = snapshot().saveToString()
         plugin.scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    plugin.dataFolder.mkdirs()
-                    Files.writeString(tmpFile.toPath(), data)
-                    Files.move(tmpFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-                }
+                withContext(Dispatchers.IO) { write(data, gen) }
             } catch (e: Exception) {
                 plugin.logger.warning("Autosave failed: ${e.message}")
             }
+        }
+    }
+
+    /** Drops a write whose snapshot is older than a later save, so a 5-minute autosave cannot roll a tier back. */
+    private fun write(data: String, gen: Int) {
+        synchronized(saveLock) {
+            if (gen != saveGen.get()) return
+            plugin.dataFolder.mkdirs()
+            Files.writeString(tmpFile.toPath(), data)
+            if (gen != saveGen.get()) return
+            Files.move(
+                tmpFile.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
         }
     }
 

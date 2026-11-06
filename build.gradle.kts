@@ -1,12 +1,12 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
-    kotlin("jvm") version "2.4.10"
+    kotlin("jvm") version "2.4.20"
     id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "de.cancelcloud"
-version = "1.2.0"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -14,9 +14,10 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.purpurmc.purpur:purpur-api:26.2.build.2620-stable")
-    implementation(kotlin("stdlib"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    compileOnly("org.purpurmc.purpur:purpur-api:26.3.build.2656-stable")
+    // Provided at runtime by MCKotlin-Paper 1.5.1-k2.4.20. Do not shade these.
+    compileOnly(kotlin("stdlib"))
+    compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 }
 
 kotlin {
@@ -24,7 +25,7 @@ kotlin {
 }
 
 tasks.processResources {
-    filesMatching("plugin.yml") {
+    filesMatching("paper-plugin.yml") {
         expand("version" to project.version)
     }
 }
@@ -38,11 +39,13 @@ tasks {
     }
 }
 
-// Copy the built jar into the test server's plugins folder
+// Local test server only. Skipped when that folder is not on this machine.
+val testPluginsDir = file("/Users/cancelcloud/Developer/Minecraft/purpur26-3/plugins/")
 tasks.register<Copy>("copyJar") {
+    onlyIf { testPluginsDir.isDirectory }
     dependsOn(tasks.named<ShadowJar>("shadowJar"))
     from(tasks.named<ShadowJar>("shadowJar").get().archiveFile.get().asFile)
-    into(file("/Users/cancelcloud/Developer/Minecraft/purpur26-2/plugins/"))
+    into(testPluginsDir)
     rename { "VillagerPlants-${project.version}.jar" }
 }
 

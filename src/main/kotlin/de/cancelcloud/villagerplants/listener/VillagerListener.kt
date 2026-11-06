@@ -11,6 +11,7 @@ import org.bukkit.entity.Villager
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.CreatureSpawnEvent
+import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityTargetEvent
@@ -26,8 +27,7 @@ class VillagerListener(private val plugin: VillagerPlantsPlugin) : Listener {
     @EventHandler
     fun onSpawn(event: CreatureSpawnEvent) {
         val villager = event.entity as? Villager ?: return
-        val natural = event.spawnReason == CreatureSpawnEvent.SpawnReason.NATURAL ||
-            event.spawnReason == CreatureSpawnEvent.SpawnReason.CHUNK_GEN
+        val natural = event.spawnReason == CreatureSpawnEvent.SpawnReason.NATURAL
         if (natural) return
         val pdc = villager.persistentDataContainer
         if (pdc.has(plugin.keys.unnatural, PersistentDataType.BYTE)) return
@@ -78,6 +78,13 @@ class VillagerListener(private val plugin: VillagerPlantsPlugin) : Listener {
     /** Personal workers take no damage. */
     @EventHandler(ignoreCancelled = true)
     fun onDamage(event: EntityDamageEvent) {
+        if (isWorker(event.entity)) event.isCancelled = true
+    }
+
+    /** Jumping on farmland turns it into dirt and knocks the crop off. Workers must not do that. */
+    @EventHandler(ignoreCancelled = true)
+    fun onTrample(event: EntityChangeBlockEvent) {
+        if (event.block.type != Material.FARMLAND) return
         if (isWorker(event.entity)) event.isCancelled = true
     }
 

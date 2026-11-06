@@ -54,7 +54,7 @@ class VillagerPlantsPlugin : JavaPlugin() {
         private set
     var particleViewDistanceBlocks: Double = 48.0
         private set
-    var maxWanderDistanceBlocks: Double = 10.0
+    var maxWanderDistanceBlocks: Double = 2.0
         private set
 
     override fun onEnable() {
@@ -86,8 +86,8 @@ class VillagerPlantsPlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
-        if (this::scope.isInitialized) scope.cancel()
         if (this::workstations.isInitialized) workstations.save()
+        if (this::scope.isInitialized) scope.cancel()
         logger.info("VillagerPlants disabled.")
     }
 
@@ -98,7 +98,7 @@ class VillagerPlantsPlugin : JavaPlugin() {
         searchYRange = config.getInt("search-y-range", 3)
         particleIntervalTicks = config.getLong("particle-interval-ticks", 10)
         particleViewDistanceBlocks = config.getDouble("particle-view-distance-blocks", 48.0)
-        maxWanderDistanceBlocks = config.getDouble("max-wander-distance-blocks", 10.0)
+        maxWanderDistanceBlocks = config.getDouble("max-wander-distance-blocks", 2.0)
     }
 }
 

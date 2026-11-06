@@ -68,11 +68,7 @@ class FarmingService(private val plugin: VillagerPlantsPlugin) {
         if (jobs[ws.id]?.isActive == true) return
         jobs[ws.id] = plugin.scope.launch {
             while (isActive && ws.placed) {
-                val interval = if (ws.tier >= 4)
-                    (plugin.workIntervalTicks / plugin.netheriteSpeedMultiplier).toLong().coerceAtLeast(1)
-                else
-                    plugin.workIntervalTicks
-                delayTicks(interval)
+                delayTicks(actionInterval(ws))
                 runCatching { workCycle(ws) }.onFailure {
                     plugin.logger.warning("Farming cycle failed for ${ws.id}: ${it.message}")
                 }
@@ -96,33 +92,42 @@ class FarmingService(private val plugin: VillagerPlantsPlugin) {
         if (!containVillager(ws, villager)) return
 
         val crop = ws.crop ?: return
+        val speed = walkSpeed(ws)
 
-        val scan = scanArea(ws, crop)
-
-        // 1) Harvest any mature crop in the area - no matter who planted it.
-        val harvestable = scan.harvestable
-        if (harvestable != null) {
-            moveAndAwait(villager, harvestable.location)
-            harvest(ws, villager, harvestable)
-            return
-        }
-
-        // 2) Plant a new crop if seeds are available (replenish from storage if needed).
-        if (ws.seedCount <= 0 && (ws.storage[crop.seed] ?: 0) > 0) {
-            ws.seedCount += ws.withdraw(crop.seed, 64)
-        }
-        if (ws.seedCount > 0) {
-            val plantable = scan.plantable
-            if (plantable != null) {
-                moveAndAwait(villager, plantable.location)
-                plant(ws, villager, plantable, crop)
+        // Fill empty soil first. A single mature stalk used to consume every
+        // cycle, so the rest of the working area never got planted.
+        while (true) {
+            if (ws.seedCount <= 0 && (ws.storage[crop.seed] ?: 0) > 0) {
+                ws.seedCount += ws.withdraw(crop.seed, 64)
             }
+            if (ws.seedCount <= 0) break
+            val spot = scanArea(ws, crop).plantable ?: break
+            moveAndAwait(villager, spot.location, speed)
+            if (!plant(ws, villager, spot, crop)) break
+            delayTicks(actionInterval(ws))
         }
+
+        val harvestable = scanArea(ws, crop).harvestable ?: return
+        moveAndAwait(villager, harvestable.location, speed)
+        harvest(ws, villager, harvestable)
     }
+
+    private fun actionInterval(ws: Workstation): Long =
+        if (ws.tier >= 4)
+            (plugin.workIntervalTicks / plugin.netheriteSpeedMultiplier).toLong().coerceAtLeast(1)
+        else
+            plugin.workIntervalTicks
+
+    /** Pathfinder speed. 1.0 is the vanilla walk; netherite tier doubles it. */
+    private fun walkSpeed(ws: Workstation): Double =
+        if (ws.tier >= 4) plugin.netheriteSpeedMultiplier.coerceAtLeast(1.0) else 1.0
 
     private fun resolveVillager(ws: Workstation): Villager? {
         val existing = ws.villagerId?.let { Bukkit.getEntity(it) } as? Villager
-        if (existing != null && existing.isValid) return existing
+        if (existing != null && existing.isValid) {
+            VillagerSpawner.prepare(plugin, existing, ws)
+            return existing
+        }
         // Respawn a missing villager at the workstation.
         VillagerSpawner.spawn(plugin, ws)
         return ws.villagerId?.let { Bukkit.getEntity(it) } as? Villager
@@ -133,8 +138,19 @@ class FarmingService(private val plugin: VillagerPlantsPlugin) {
      * (skipping this work cycle).
      */
     private suspend fun containVillager(ws: Workstation, villager: Villager): Boolean {
-        val home = (ws.location ?: return false).clone().add(0.5, 1.0, 0.5)
-        val maxDistance = maxOf(plugin.maxWanderDistanceBlocks, ws.areaSize / 2.0 + 1.0)
+        val home = VillagerSpawner.standSpot(ws) ?: return false
+        val feet = villager.location.block
+        val standingOnTable = plugin.workstations.at(feet) != null ||
+            plugin.workstations.at(feet.getRelative(0, -1, 0)) != null
+        if (standingOnTable) {
+            villager.teleport(home)
+            return true
+        }
+        // Corner of the working square, plus a small slack from config.
+        // A flat 10-block leash let a 4x4 farmer stroll well outside the farm between actions.
+        val half = ws.areaSize / 2.0
+        val corner = kotlin.math.hypot(half, half)
+        val maxDistance = corner + plugin.maxWanderDistanceBlocks.coerceAtLeast(0.0)
         val distSq = if (villager.world == home.world)
             villager.location.distanceSquared(home)
         else
@@ -151,15 +167,15 @@ class FarmingService(private val plugin: VillagerPlantsPlugin) {
     }
 
     /** Walks the villager towards the target and waits until it stands on it (or times out). */
-    private suspend fun moveAndAwait(villager: Villager, target: Location) {
+    private suspend fun moveAndAwait(villager: Villager, target: Location, speed: Double) {
         val dest = target.clone().add(0.5, 0.0, 0.5)
-        villager.pathfinder.moveTo(dest, 1.0)
+        villager.pathfinder.moveTo(dest, speed)
         var waited = 0L
-        while (waited < 200 && villager.isValid) { // max 10 seconds
+        while (waited < 40 && villager.isValid) { // max 2 seconds, then work anyway
             if (villager.location.distanceSquared(dest) <= 2.25) break // within 1.5 blocks
             delayTicks(10)
             waited += 10
-            if (!villager.pathfinder.hasPath()) villager.pathfinder.moveTo(dest, 1.0)
+            if (!villager.pathfinder.hasPath()) villager.pathfinder.moveTo(dest, speed)
         }
         // Let the villager settle on the spot before it works.
         villager.pathfinder.stopPathfinding()
@@ -265,13 +281,14 @@ class FarmingService(private val plugin: VillagerPlantsPlugin) {
         block.type = type
     }
 
-    private fun plant(ws: Workstation, villager: Villager, block: Block, crop: Crop) {
-        if (!block.type.isAir) return
-        if (block.getRelative(0, -1, 0).type != crop.soil) return
-        if (ws.seedCount <= 0) return
+    private fun plant(ws: Workstation, villager: Villager, block: Block, crop: Crop): Boolean {
+        if (!block.type.isAir) return false
+        if (block.getRelative(0, -1, 0).type != crop.soil) return false
+        if (ws.seedCount <= 0) return false
         ws.seedCount -= 1
         block.type = crop.block
         villager.swingMainHand()
         block.world.playSound(block.location, Sound.ITEM_CROP_PLANT, 1f, 1f)
+        return true
     }
 }
